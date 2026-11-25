@@ -69,7 +69,7 @@ jobs:
 
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-ssl=y
-          CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
+          CONFIG_LUCI_LANG_zh_Hans=y
 
           CONFIG_PACKAGE_block-mount=y
           CONFIG_PACKAGE_blkid=y
