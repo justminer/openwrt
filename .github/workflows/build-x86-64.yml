@@ -1,0 +1,107 @@
+name: Build OpenWrt x86/64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk gcc-multilib \
+            g++-multilib gettext git libncurses-dev libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev file wget
+
+      - name: Update and install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Add Nebula Router defaults
+        run: |
+          mkdir -p files/etc/uci-defaults
+
+          cat > files/etc/banner <<'EOF'
+           _   _      _           _         ____             _
+          | \ | | ___| |__  _   _| | __ _  |  _ \ ___  _   _| |_ ___ _ __
+          |  \| |/ _ \ '_ \| | | | |/ _` | | |_) / _ \| | | | __/ _ \ '__|
+          | |\  |  __/ |_) | |_| | | (_| | |  _ < (_) | |_| | ||  __/ |
+          |_| \_|\___|_.__/ \__,_|_|\__,_| |_| \_\___/ \__,_|\__\___|_|
+
+                               星云路由
+          EOF
+
+          cat > files/etc/uci-defaults/99-nebula-router <<'EOF'
+          #!/bin/sh
+
+          uci -q batch <<'UCI'
+          set system.@system[0].hostname='NebulaRouter'
+          set system.@system[0].description='星云路由'
+          set network.lan.ipaddr='10.5.10.254'
+          set luci.main.lang='zh_cn'
+          commit system
+          commit network
+          commit luci
+          UCI
+
+          exit 0
+          EOF
+
+          chmod +x files/etc/uci-defaults/99-nebula-router
+
+      - name: Configure x86/64
+        run: |
+          cat > .config <<'EOF'
+          CONFIG_TARGET_x86=y
+          CONFIG_TARGET_x86_64=y
+          CONFIG_TARGET_x86_64_DEVICE_generic=y
+
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-ssl=y
+          CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
+
+          CONFIG_PACKAGE_block-mount=y
+          CONFIG_PACKAGE_blkid=y
+          CONFIG_PACKAGE_fdisk=y
+          CONFIG_PACKAGE_lsblk=y
+          CONFIG_PACKAGE_parted=y
+          CONFIG_PACKAGE_e2fsprogs=y
+          CONFIG_PACKAGE_kmod-fs-ext4=y
+          CONFIG_PACKAGE_kmod-fs-ntfs3=y
+          CONFIG_PACKAGE_kmod-fs-vfat=y
+          CONFIG_PACKAGE_kmod-usb-storage=y
+          CONFIG_PACKAGE_kmod-usb-storage-uas=y
+          CONFIG_PACKAGE_kmod-usb2=y
+          CONFIG_PACKAGE_kmod-usb3=y
+
+          CONFIG_VERSION_DIST="NebulaRouter"
+          CONFIG_VERSION_PRODUCT="星云路由"
+          CONFIG_VERSION_MANUFACTURER="JustMiner"
+          EOF
+
+          make defconfig
+
+      - name: Download source packages
+        run: make download -j8
+
+      - name: Build firmware
+        run: make -j$(nproc) V=s
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-x86-64
+          path: bin/targets/x86/64/
+          if-no-files-found: error
+          retention-days: 14
